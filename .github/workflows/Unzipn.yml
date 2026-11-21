@@ -1,0 +1,64 @@
+name: Unzip, replace and build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip and replace project files
+        run: |
+          shopt -s nullglob
+          zips=(*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "Root me koi zip nahi, seedha build."
+            exit 0
+          fi
+          for z in "${zips[@]}"; do
+            echo "Unzipping $z"
+            rm -rf /tmp/unz && mkdir /tmp/unz
+            unzip -q -o "$z" -d /tmp/unz
+            rm -rf /tmp/unz/__MACOSX
+            src=/tmp/unz
+            if [ "$(ls -A /tmp/unz | wc -l)" -eq 1 ] && [ -d "/tmp/unz/$(ls -A /tmp/unz)" ]; then
+              src="/tmp/unz/$(ls -A /tmp/unz)"
+            fi
+            rm -rf "$src/.git" "$src/.github"
+            cp -a "$src"/. ./
+            rm -f "$z"
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Update project from zip" || echo "Koi change nahi"
+          git push
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - run: gradle assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notif-alarm-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish APK to Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" app/build/outputs/apk/debug/app-debug.apk \
+            --title "High Priority build ${{ github.run_number }}" --notes "Debug APK"
