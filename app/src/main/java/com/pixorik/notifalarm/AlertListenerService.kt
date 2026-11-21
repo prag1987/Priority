@@ -2,13 +2,12 @@ package com.pixorik.notifalarm
 
 import android.app.Notification
 import android.content.ComponentName
-import android.content.pm.PackageManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
 /**
  * System is service ko background me zinda rakhta hai jab tak
- * "Notification access" ON hai. Watched app ki notification aate hi alarm shuru.
+ * "Notification access" ON hai. Kisi rule se match hote hi alarm shuru.
  */
 class AlertListenerService : NotificationListenerService() {
 
@@ -16,7 +15,6 @@ class AlertListenerService : NotificationListenerService() {
         if (!Prefs.enabled(this)) return
         val pkg = sbn.packageName
         if (pkg == packageName) return
-        if (pkg !in Prefs.watched(this)) return
 
         val n = sbn.notification
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
@@ -29,11 +27,8 @@ class AlertListenerService : NotificationListenerService() {
 
         if (!Prefs.shouldAlert(this, pkg, title, text)) return
 
-        val appName = try {
-            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
-        } catch (e: PackageManager.NameNotFoundException) {
-            pkg
-        }
+        val appName = AppCatalog.label(this, pkg)
+        Prefs.addHit(this, Prefs.Hit(System.currentTimeMillis(), appName, title, text))
 
         AlarmController.trigger(
             this, sbn.key,

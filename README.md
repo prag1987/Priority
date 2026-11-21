@@ -15,11 +15,13 @@ Actions tab -> "Build APK" run -> Artifacts se `notif-alarm-apk` download karein
 1. APK install karein (Unknown sources allow).
 2. App kholein -> 1, 2, 3, 4 buttons se permissions dein
    (Notification access, Notification permission, Battery unrestricted, Full-screen alert).
-3. Jin apps par alarm chahiye unhe tick karein (Fiverr, Upwork, Slack, WhatsApp... pehle se tick hain).
+3. Rules tab se apne rules banayein (Fiverr, Upwork, WhatsApp -> Piyoo, Teams...).
 4. "Test alarm" dabakar check karein.
 
-## Rules
-App me "+ Rule add karein" se app + keyword do (jaise WhatsApp + Piyoo). Jis app ka rule hai uski sirf matching notification (sender, group ya message text me keyword) par alarm bajega; baaki apps par pehle jaisa.
+## Rules (BuzzKill-style)
+Rules tab -> "Create rule" -> app chunein (search + chat apps filter) -> sentence me "anything" par tap karke
+naam/keyword likhein (jaise Piyoo, Vineet; khaali = us app ki har notification) -> Save.
+Har rule ko Active/Off kar sakte hain, ⋮ se Edit/Delete. History tab me dikhta hai kab kis par alarm baja.
 
 ## Sound
 Alarm sound `app/src/main/res/raw/fire_alarm.mp3` hai (bell-style fire alarm; alternatives: sounds/ folder). Apni file se badalna ho to isi naam se replace karein.

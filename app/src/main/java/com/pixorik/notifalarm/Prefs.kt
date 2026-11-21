@@ -1,26 +1,14 @@
 package com.pixorik.notifalarm
 
 import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
 
 object Prefs {
-    // Default watched apps (list me se baad me badal sakte hain)
-    private val DEFAULTS = setOf(
-        "com.fiverr.fiverr",                 // Fiverr
-        "com.upwork.android.apps.main",      // Upwork
-        "com.Slack",                         // Slack
-        "com.microsoft.teams",               // Microsoft Teams
-        "com.whatsapp",                      // WhatsApp
-        "org.telegram.messenger"             // Telegram
-    )
 
     private fun sp(c: Context) = c.getSharedPreferences("notif_alarm", Context.MODE_PRIVATE)
 
-    fun watched(c: Context): Set<String> =
-        sp(c).getStringSet("watched", DEFAULTS) ?: DEFAULTS
-
-    fun setWatched(c: Context, s: Set<String>) =
-        sp(c).edit().putStringSet("watched", HashSet(s)).apply()
-
+    // ---- Global settings ----
     fun enabled(c: Context) = sp(c).getBoolean("enabled", true)
     fun setEnabled(c: Context, v: Boolean) = sp(c).edit().putBoolean("enabled", v).apply()
 
@@ -28,35 +16,96 @@ object Prefs {
     fun autoStop(c: Context) = sp(c).getBoolean("auto_stop", true)
     fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("auto_stop", v).apply()
 
-    // ---- Rules: (app, keyword). Jis app ka koi rule hai, uski sirf matching notifications par alarm. ----
-    data class Rule(val pkg: String, val keyword: String)
+    fun maxVolume(c: Context) = sp(c).getBoolean("max_volume", true)
+    fun setMaxVolume(c: Context, v: Boolean) = sp(c).edit().putBoolean("max_volume", v).apply()
 
-    fun rules(c: Context): List<Rule> =
-        (sp(c).getStringSet("rules", emptySet()) ?: emptySet()).mapNotNull {
-            val i = it.indexOf('|')
-            if (i <= 0) null else Rule(it.substring(0, i), it.substring(i + 1))
+    // ---- Rules ----
+    /** keyword khaali = us app ki har notification. Comma se kai naam: "Piyoo, Vineet". */
+    data class Rule(val id: String, val pkg: String, val keyword: String, val enabled: Boolean)
+
+    fun rules(c: Context): List<Rule> {
+        val arr = try {
+            JSONArray(sp(c).getString("rules_json", "[]"))
+        } catch (e: Exception) {
+            JSONArray()
         }
-
-    fun addRule(c: Context, r: Rule) {
-        val s = HashSet(sp(c).getStringSet("rules", emptySet()) ?: emptySet())
-        s.add("${r.pkg}|${r.keyword}")
-        sp(c).edit().putStringSet("rules", s).apply()
+        val out = ArrayList<Rule>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            out.add(
+                Rule(
+                    o.optString("id"),
+                    o.optString("pkg"),
+                    o.optString("keyword", ""),
+                    o.optBoolean("enabled", true)
+                )
+            )
+        }
+        return out
     }
 
-    fun removeRule(c: Context, r: Rule) {
-        val s = HashSet(sp(c).getStringSet("rules", emptySet()) ?: emptySet())
-        s.remove("${r.pkg}|${r.keyword}")
-        sp(c).edit().putStringSet("rules", s).apply()
+    private fun saveRules(c: Context, list: List<Rule>) {
+        val arr = JSONArray()
+        list.forEach {
+            arr.put(
+                JSONObject()
+                    .put("id", it.id)
+                    .put("pkg", it.pkg)
+                    .put("keyword", it.keyword)
+                    .put("enabled", it.enabled)
+            )
+        }
+        sp(c).edit().putString("rules_json", arr.toString()).apply()
     }
+
+    fun upsertRule(c: Context, r: Rule) {
+        val l = rules(c).toMutableList()
+        val i = l.indexOfFirst { it.id == r.id }
+        if (i >= 0) l[i] = r else l.add(r)
+        saveRules(c, l)
+    }
+
+    fun deleteRule(c: Context, id: String) = saveRules(c, rules(c).filter { it.id != id })
 
     /** Title (sender/group) + text me keyword dhundta hai, case-insensitive. */
     fun shouldAlert(c: Context, pkg: String, title: String, text: String): Boolean {
-        val mine = rules(c).filter { it.pkg == pkg }
-        if (mine.isEmpty()) return true
         val hay = "$title\n$text"
-        return mine.any { hay.contains(it.keyword, ignoreCase = true) }
+        return rules(c).any { r ->
+            r.enabled && r.pkg == pkg && (
+                r.keyword.isBlank() ||
+                    r.keyword.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                        .any { hay.contains(it, ignoreCase = true) }
+                )
+        }
     }
 
-    fun maxVolume(c: Context) = sp(c).getBoolean("max_volume", true)
-    fun setMaxVolume(c: Context, v: Boolean) = sp(c).edit().putBoolean("max_volume", v).apply()
+    // ---- History ----
+    data class Hit(val time: Long, val appName: String, val title: String, val text: String)
+
+    fun hits(c: Context): List<Hit> {
+        val arr = try {
+            JSONArray(sp(c).getString("hits_json", "[]"))
+        } catch (e: Exception) {
+            JSONArray()
+        }
+        val out = ArrayList<Hit>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            out.add(Hit(o.optLong("t"), o.optString("a"), o.optString("ti"), o.optString("tx")))
+        }
+        return out
+    }
+
+    fun addHit(c: Context, h: Hit) {
+        val list = ArrayList<Hit>()
+        list.add(h)
+        list.addAll(hits(c))
+        val arr = JSONArray()
+        list.take(50).forEach {
+            arr.put(JSONObject().put("t", it.time).put("a", it.appName).put("ti", it.title).put("tx", it.text))
+        }
+        sp(c).edit().putString("hits_json", arr.toString()).apply()
+    }
+
+    fun clearHits(c: Context) = sp(c).edit().remove("hits_json").apply()
 }

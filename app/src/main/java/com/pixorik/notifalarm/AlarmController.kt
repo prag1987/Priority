@@ -12,7 +12,9 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.VibrationEffect
+import android.os.Build
 import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 
 /** Alarm (sound + vibration + ongoing notification) yahin se control hota hai. */
@@ -60,14 +62,33 @@ object AlarmController {
     fun stop(ctx: Context) {
         active.clear()
         handler.removeCallbacks(timeout)
+        handler.removeCallbacks(vibLoop)          // vibration loop pehle band
+        val p = player
+        player = null                              // isRinging() turant false
+        try { p?.stop() } catch (_: Exception) { }
+        try { p?.release() } catch (_: Exception) { }
+        try { vibrator(ctx).cancel() } catch (_: Exception) { }
         try {
-            player?.stop()
-        } catch (_: Exception) {
+            ctx.getSystemService(NotificationManager::class.java).cancel(NOTIF_ID)
+        } catch (_: Exception) { }
+    }
+
+    private fun vibrator(ctx: Context): Vibrator =
+        if (Build.VERSION.SDK_INT >= 31)
+            ctx.getSystemService(VibratorManager::class.java).defaultVibrator
+        else
+            ctx.getSystemService(Vibrator::class.java)
+
+    // Infinite repeat ki jagah chhoti vibration baar-baar: stop hote hi loop band, vibration atakti nahi
+    private val vibLoop = object : Runnable {
+        override fun run() {
+            val c = appCtx ?: return
+            if (player == null) return
+            try {
+                vibrator(c).vibrate(VibrationEffect.createOneShot(900, VibrationEffect.DEFAULT_AMPLITUDE))
+            } catch (_: Exception) { }
+            handler.postDelayed(this, 1500)
         }
-        player?.release()
-        player = null
-        ctx.getSystemService(Vibrator::class.java)?.cancel()
-        ctx.getSystemService(NotificationManager::class.java).cancel(NOTIF_ID)
     }
 
     fun isRinging() = player != null
@@ -97,8 +118,8 @@ object AlarmController {
             start()
         }
 
-        ctx.getSystemService(Vibrator::class.java)
-            ?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 800, 500), 0))
+        handler.removeCallbacks(vibLoop)
+        handler.post(vibLoop)
     }
 
     private fun postNotification(ctx: Context) {
