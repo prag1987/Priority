@@ -19,6 +19,16 @@ object Prefs {
     fun maxVolume(c: Context) = sp(c).getBoolean("max_volume", true)
     fun setMaxVolume(c: Context, v: Boolean) = sp(c).edit().putBoolean("max_volume", v).apply()
 
+    // ---- Alarm sound (null = built-in fire siren) ----
+    fun soundUri(c: Context): String? = sp(c).getString("sound_uri", null)
+    fun soundName(c: Context): String = sp(c).getString("sound_name", null) ?: "Fire siren (default)"
+    fun setSound(c: Context, uri: String?, name: String?) {
+        val e = sp(c).edit()
+        if (uri == null) e.remove("sound_uri").remove("sound_name")
+        else e.putString("sound_uri", uri).putString("sound_name", name ?: "Custom sound")
+        e.apply()
+    }
+
     // ---- Rules ----
     /** keyword khaali = us app ki har notification. Comma se kai naam: "Piyoo, Vineet". */
     data class Rule(val id: String, val pkg: String, val keyword: String, val enabled: Boolean)
@@ -77,6 +87,27 @@ object Prefs {
                         .any { hay.contains(it, ignoreCase = true) }
                 )
         }
+    }
+
+    // ---- Recent apps (jinhone recently notification bheji) ----
+    fun recent(c: Context): List<String> {
+        val arr = try {
+            JSONArray(sp(c).getString("recent_json", "[]"))
+        } catch (e: Exception) {
+            JSONArray()
+        }
+        val out = ArrayList<String>()
+        for (i in 0 until arr.length()) out.add(arr.optString(i))
+        return out
+    }
+
+    fun addRecent(c: Context, pkg: String) {
+        val l = ArrayList<String>()
+        l.add(pkg)
+        l.addAll(recent(c).filter { it != pkg })
+        val arr = JSONArray()
+        l.take(15).forEach { arr.put(it) }
+        sp(c).edit().putString("recent_json", arr.toString()).apply()
     }
 
     // ---- History ----

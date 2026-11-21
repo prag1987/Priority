@@ -11,6 +11,7 @@ import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextPaint
+import android.text.TextUtils
 import android.text.TextWatcher
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
@@ -23,6 +24,7 @@ import android.widget.BaseAdapter
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.GridView
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -53,6 +55,9 @@ class RuleEditorActivity : Activity() {
     private var shown: List<AppCatalog.AppItem> = emptyList()
     private var gridAdapter: BaseAdapter? = null
     private var pickBtn: TextView? = null
+    private var recentLabel: TextView? = null
+    private var recentScroll: HorizontalScrollView? = null
+    private var recentRow: LinearLayout? = null
 
     private fun dp(v: Int) = Ui.dp(this, v)
 
@@ -129,6 +134,21 @@ class RuleEditorActivity : Activity() {
         }
         col.addView(chip)
 
+        val rl = Ui.tv(this, "Recent", 15f, Ui.MUTED, true)
+        rl.setPadding(0, 0, 0, dp(8))
+        val rs = HorizontalScrollView(this)
+        rs.isHorizontalScrollBarEnabled = false
+        val rr = LinearLayout(this)
+        rr.orientation = LinearLayout.HORIZONTAL
+        rs.addView(rr)
+        recentLabel = rl
+        recentScroll = rs
+        recentRow = rr
+        col.addView(rl)
+        val rsp = LinearLayout.LayoutParams(MATCH, WRAP)
+        rsp.bottomMargin = dp(12)
+        col.addView(rs, rsp)
+
         val grid = GridView(this)
         grid.numColumns = 2
         grid.horizontalSpacing = dp(12)
@@ -138,6 +158,7 @@ class RuleEditorActivity : Activity() {
             if (pos in shown.indices) {
                 picked = shown[pos].pkg
                 gridAdapter?.notifyDataSetChanged()
+                refreshRecent()
                 updatePickBtn()
             }
         }
@@ -178,6 +199,47 @@ class RuleEditorActivity : Activity() {
             }
             .sortedWith(compareBy({ it.pkg !in chatSet }, { it.label.lowercase() }))
         gridAdapter?.notifyDataSetChanged()
+        refreshRecent()
+    }
+
+    /** Recently notification bhejne wali apps ki row (search karte waqt chhup jaati hai). */
+    private fun refreshRecent() {
+        val row = recentRow ?: return
+        row.removeAllViews()
+        val items = Prefs.recent(this).mapNotNull { p -> apps.firstOrNull { it.pkg == p } }
+        val show = items.isNotEmpty() && query.isBlank()
+        val vis = if (show) View.VISIBLE else View.GONE
+        recentLabel?.visibility = vis
+        recentScroll?.visibility = vis
+        if (!show) return
+        items.forEach { a ->
+            val lp = LinearLayout.LayoutParams(dp(92), WRAP)
+            lp.rightMargin = dp(10)
+            row.addView(recentTile(a), lp)
+        }
+    }
+
+    private fun recentTile(a: AppCatalog.AppItem): View {
+        val tile = LinearLayout(this)
+        tile.orientation = LinearLayout.VERTICAL
+        tile.gravity = Gravity.CENTER_HORIZONTAL
+        tile.background = Ui.round(if (a.pkg == picked) Ui.BLUE else Ui.CARD, dp(18))
+        tile.setPadding(dp(8), dp(12), dp(8), dp(12))
+        val icon = Ui.appIcon(this, a.pkg)
+        if (icon != null) tile.addView(icon, LinearLayout.LayoutParams(dp(40), dp(40)))
+        val label = Ui.tv(this, a.label, 12f, Color.WHITE, true)
+        label.maxLines = 1
+        label.ellipsize = TextUtils.TruncateAt.END
+        label.gravity = Gravity.CENTER
+        label.setPadding(0, dp(8), 0, 0)
+        tile.addView(label)
+        tile.setOnClickListener {
+            picked = a.pkg
+            gridAdapter?.notifyDataSetChanged()
+            refreshRecent()
+            updatePickBtn()
+        }
+        return tile
     }
 
     private fun updatePickBtn() {
@@ -252,7 +314,7 @@ class RuleEditorActivity : Activity() {
         link(AppCatalog.label(this, p)) { showPicker() }
         plain(" that contains ")
         link(if (keyword.isBlank()) "anything" else "\"$keyword\"") { askKeyword() }
-        plain(" then alarm immediately with fire alarm sound and vibration")
+        plain(" then alarm immediately with your alarm sound and vibration")
 
         val sentence = Ui.tv(this, sb, 26f, Color.WHITE, true)
         sentence.movementMethod = LinkMovementMethod.getInstance()

@@ -8,6 +8,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -101,25 +102,48 @@ object AlarmController {
             am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
         }
 
-        player = MediaPlayer().apply {
-            setAudioAttributes(
+        // Pehle user ki chuni hui sound (system tone / phone file), na chale to built-in fire siren
+        val saved = Prefs.soundUri(ctx)
+        var mp: MediaPlayer? = null
+        if (saved != null) {
+            mp = try {
+                buildPlayer(ctx) { it.setDataSource(ctx, Uri.parse(saved)) }
+            } catch (e: Exception) {
+                null
+            }
+        }
+        if (mp == null) {
+            mp = buildPlayer(ctx) { m ->
+                ctx.resources.openRawResourceFd(R.raw.fire_alarm).use {
+                    m.setDataSource(it.fileDescriptor, it.startOffset, it.length)
+                }
+            }
+        }
+        mp.start()
+        player = mp
+
+        handler.removeCallbacks(vibLoop)
+        handler.post(vibLoop)
+    }
+
+    private fun buildPlayer(ctx: Context, source: (MediaPlayer) -> Unit): MediaPlayer {
+        val mp = MediaPlayer()
+        try {
+            mp.setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM) // silent/vibrate mode me bhi bajta hai
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
             )
-            // Fire alarm sound: res/raw/fire_alarm.mp3 (isse apni file se replace kar sakte hain)
-            ctx.resources.openRawResourceFd(R.raw.fire_alarm).use {
-                setDataSource(it.fileDescriptor, it.startOffset, it.length)
-            }
-            isLooping = true
-            setWakeMode(ctx, PowerManager.PARTIAL_WAKE_LOCK)
-            prepare()
-            start()
+            source(mp)
+            mp.isLooping = true
+            mp.setWakeMode(ctx, PowerManager.PARTIAL_WAKE_LOCK)
+            mp.prepare()
+            return mp
+        } catch (e: Exception) {
+            mp.release()
+            throw e
         }
-
-        handler.removeCallbacks(vibLoop)
-        handler.post(vibLoop)
     }
 
     private fun postNotification(ctx: Context) {

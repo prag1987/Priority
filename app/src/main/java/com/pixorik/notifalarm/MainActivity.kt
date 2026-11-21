@@ -2,6 +2,9 @@ package com.pixorik.notifalarm
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
+import android.media.RingtoneManager
+import android.provider.OpenableColumns
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -258,7 +261,7 @@ class MainActivity : Activity() {
         val label = AppCatalog.label(this, r.pkg)
         val card = LinearLayout(this)
         card.orientation = LinearLayout.VERTICAL
-        card.background = Ui.round(if (r.enabled) Ui.RED else Ui.GREY, dp(30))
+        card.background = Ui.round(if (r.enabled) Ui.GREEN else Ui.GREY, dp(30))
         card.setPadding(dp(8), dp(4), dp(8), dp(8))
 
         val top = LinearLayout(this)
@@ -288,6 +291,7 @@ class MainActivity : Activity() {
         top.addView(state)
         val sw = Switch(this)
         sw.isChecked = r.enabled
+        Ui.styleSwitch(this, sw, Color.WHITE, Ui.DARK, Color.parseColor("#D0D0D0"), Color.parseColor("#55565B"))
         sw.setOnCheckedChangeListener { _, on ->
             Prefs.upsertRule(this, r.copy(enabled = on))
             showTab()
@@ -369,6 +373,7 @@ class MainActivity : Activity() {
         row.addView(Ui.tv(this, label, 16f), LinearLayout.LayoutParams(0, WRAP, 1f))
         val sw = Switch(this)
         sw.isChecked = checked
+        Ui.styleSwitch(this, sw, Ui.DARK, Ui.YELLOW, Color.parseColor("#B5B5B5"), Ui.GREY)
         sw.setOnCheckedChangeListener { _, on -> onChange(on) }
         row.addView(sw)
         return row
@@ -410,6 +415,8 @@ class MainActivity : Activity() {
             toggleRow("Alarm volume full kar do", Prefs.maxVolume(this)) { Prefs.setMaxVolume(this, it) },
             lp(10)
         )
+
+        col.addView(soundRow(), lp(10))
 
         val sec = Ui.tv(this, "Permissions", 14f, Ui.MUTED, true)
         sec.setPadding(0, dp(24), 0, dp(8))
@@ -456,5 +463,100 @@ class MainActivity : Activity() {
             lp(12)
         )
         return ScrollView(this).apply { addView(col) }
+    }
+
+    // ----------------------------------------------------------- alarm sound
+
+    private val REQ_RINGTONE = 101
+    private val REQ_FILE = 102
+
+    private fun soundRow(): View {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        row.background = Ui.round(Ui.CARD, dp(20))
+        row.setPadding(dp(18), dp(14), dp(18), dp(14))
+        val texts = LinearLayout(this)
+        texts.orientation = LinearLayout.VERTICAL
+        texts.addView(Ui.tv(this, "🔊 Alarm sound", 16f, Color.WHITE, true))
+        texts.addView(Ui.tv(this, Prefs.soundName(this), 13f, Ui.MUTED))
+        row.addView(texts, LinearLayout.LayoutParams(0, WRAP, 1f))
+        val change = Ui.tv(this, "Change", 14f, Ui.YELLOW, true)
+        change.setPadding(dp(12), dp(8), dp(4), dp(8))
+        row.addView(change)
+        row.setOnClickListener { showSoundDialog() }
+        return row
+    }
+
+    private fun showSoundDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Alarm sound")
+            .setItems(
+                arrayOf("Fire siren (default)", "System sounds (alarm / ringtone)…", "Phone se audio file…")
+            ) { _, which ->
+                when (which) {
+                    0 -> {
+                        Prefs.setSound(this, null, null)
+                        showTab()
+                    }
+                    1 -> pickSystemSound()
+                    else -> pickFile()
+                }
+            }
+            .show()
+    }
+
+    private fun pickSystemSound() {
+        val i = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+        i.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALL)
+        i.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+        i.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+        i.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Alarm sound chunein")
+        val cur = Prefs.soundUri(this)
+        if (cur != null) i.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(cur))
+        startActivityForResult(i, REQ_RINGTONE)
+    }
+
+    private fun pickFile() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        i.addCategory(Intent.CATEGORY_OPENABLE)
+        i.type = "audio/*"
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        startActivityForResult(i, REQ_FILE)
+    }
+
+    private fun displayName(uri: Uri): String {
+        val n: String? = try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cur ->
+                if (cur.moveToFirst()) cur.getString(0) else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+        return n ?: "Custom sound"
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK || data == null) return
+        if (requestCode == REQ_RINGTONE) {
+            val uri: Uri? = data.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            if (uri != null) {
+                val title: String? = try {
+                    RingtoneManager.getRingtone(this, uri)?.getTitle(this)
+                } catch (e: Exception) {
+                    null
+                }
+                Prefs.setSound(this, uri.toString(), title ?: "System sound")
+            }
+        } else if (requestCode == REQ_FILE) {
+            val uri = data.data ?: return
+            try {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: Exception) {
+            }
+            Prefs.setSound(this, uri.toString(), displayName(uri))
+        }
     }
 }

@@ -6,6 +6,9 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.StateListDrawable
+import android.widget.Switch
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -20,7 +23,7 @@ object Ui {
     val BAR = Color.parseColor("#14151A")
     val CARD = Color.parseColor("#1B1C20")
     val YELLOW = Color.parseColor("#FFF08A")
-    val RED = Color.parseColor("#FF7676")
+    val GREEN = Color.parseColor("#1DBF73") // Fiverr green
     val BLUE = Color.parseColor("#7B93FF")
     val GREY = Color.parseColor("#3A3B40")
     val MUTED = Color.parseColor("#8A8B90")
@@ -53,6 +56,27 @@ object Ui {
         return t
     }
 
+    /** Switch ko apne colors me: ON/OFF dono state saaf dikhein. */
+    fun styleSwitch(c: Context, sw: Switch, onThumb: Int, onTrack: Int, offThumb: Int, offTrack: Int) {
+        fun shape(color: Int, w: Int, h: Int, r: Int): GradientDrawable {
+            val d = GradientDrawable()
+            d.setColor(color)
+            d.cornerRadius = r.toFloat()
+            d.setSize(w, h)
+            return d
+        }
+        val on = intArrayOf(android.R.attr.state_checked)
+        val off = intArrayOf()
+        val track = StateListDrawable()
+        track.addState(on, shape(onTrack, dp(c, 50), dp(c, 28), dp(c, 14)))
+        track.addState(off, shape(offTrack, dp(c, 50), dp(c, 28), dp(c, 14)))
+        val thumb = StateListDrawable()
+        thumb.addState(on, InsetDrawable(shape(onThumb, dp(c, 20), dp(c, 20), dp(c, 10)), dp(c, 4)))
+        thumb.addState(off, InsetDrawable(shape(offThumb, dp(c, 20), dp(c, 20), dp(c, 10)), dp(c, 4)))
+        sw.trackDrawable = track
+        sw.thumbDrawable = thumb
+    }
+
     fun appIcon(c: Context, pkg: String): ImageView? = try {
         val v = ImageView(c)
         v.setImageDrawable(c.packageManager.getApplicationIcon(pkg))
@@ -75,7 +99,7 @@ object Ui {
             sb.append(" that contains ")
             hl("\"$keyword\"")
         }
-        sb.append(" then alarm immediately with fire alarm sound")
+        sb.append(" then alarm immediately with alarm sound")
         return sb
     }
 }

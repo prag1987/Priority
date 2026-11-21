@@ -12,9 +12,10 @@ import android.service.notification.StatusBarNotification
 class AlertListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        if (!Prefs.enabled(this)) return
         val pkg = sbn.packageName
         if (pkg == packageName) return
+        if (!sbn.isOngoing) Prefs.addRecent(this, pkg) // picker ke "Recent" ke liye
+        if (!Prefs.enabled(this)) return
 
         val n = sbn.notification
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
@@ -38,6 +39,15 @@ class AlertListenerService : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         if (Prefs.autoStop(this)) AlarmController.onSourceRemoved(this, sbn.key)
+    }
+
+    override fun onListenerConnected() {
+        // Jo notifications abhi shade me hain, unke apps ko bhi Recent me daalo
+        try {
+            activeNotifications?.filter { !it.isOngoing && it.packageName != packageName }
+                ?.forEach { Prefs.addRecent(this, it.packageName) }
+        } catch (e: Exception) {
+        }
     }
 
     override fun onListenerDisconnected() {
